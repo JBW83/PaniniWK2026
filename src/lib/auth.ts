@@ -6,7 +6,12 @@ export async function signUp(email: string, password: string) {
     email,
     password,
   });
-  if (error) throw error;
+
+  if (error) {
+    console.log("SignUp error:", error.message);
+    return null;
+  }
+
   return data;
 }
 
@@ -16,31 +21,54 @@ export async function signIn(email: string, password: string) {
     email,
     password,
   });
-  if (error) throw error;
+
+  if (error) {
+    console.log("SignIn error:", error.message);
+    return null;
+  }
+
   return data;
 }
 
 // ✅ LOGOUT
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+
+  if (error) {
+    console.log("SignOut error:", error.message);
+  }
 }
 
-// ✅ CURRENT SESSION
+// ✅ SAFE SESSION (CRUCIAAL)
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
+
+  if (error) {
+    console.log("Session error:", error.message);
+    return null;
+  }
+
+  if (!data?.session) {
+    // ✅ GEEN fout → gewoon geen sessie
+    return null;
+  }
+
   return data.session;
 }
 
-// ✅ CURRENT USER (dit miste bij jou)
+// ✅ SAFE USER
 export async function getUser() {
   const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  return data.user; // kan null zijn als niet ingelogd
+
+  if (error) {
+    console.log("User error:", error.message);
+    return null;
+  }
+
+  return data.user ?? null;
 }
 
-// ✅ AUTH STATE LISTENER
+// ✅ AUTH LISTENER
 export function onAuthStateChange(callback: (email: string | null) => void) {
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
     callback(session?.user?.email ?? null);
