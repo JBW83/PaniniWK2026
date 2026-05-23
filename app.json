@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "paniniwk2026",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "jsEngine": "jsc",
     "ios": {
       "supportsTablet": true
     },
@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.jobawa.PaniniWK2026"
     },
     "web": {
       "output": "static",
@@ -42,7 +43,14 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "reactNativeReleaseLevel": "stable"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4041483c-9146-4509-8e64-5e6b8bd135bd"
+      }
     }
   }
 }
