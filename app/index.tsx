@@ -7,18 +7,39 @@ import { loadOwnedIds } from "../src/utils/storage";
 export default function Home() {
   const [data, setData] = useState<Sticker[]>([]);
 
+  // ✅ FIX: veilige load met delay + catch
   useEffect(() => {
-    (async () => {
-      const ownedIds = await loadOwnedIds();
-      const setIds = new Set(ownedIds);
+    let mounted = true;
 
-      const updated = INITIAL_DATA.map((s) => ({
-        ...s,
-        owned: setIds.has(s.id),
-      }));
+    const loadData = async () => {
+      try {
+        const ownedIds = await loadOwnedIds();
 
-      setData(updated);
-    })();
+        if (!mounted) return;
+
+        const setIds = new Set(ownedIds);
+
+        const updated = INITIAL_DATA.map((s) => ({
+          ...s,
+          owned: setIds.has(s.id),
+        }));
+
+        setData(updated);
+      } catch (e) {
+        console.error("Home load crash prevented:", e);
+
+        if (mounted) {
+          setData(INITIAL_DATA);
+        }
+      }
+    };
+
+    // ✅ BELANGRIJK: kleine delay → voorkomt crash bij startup
+    setTimeout(loadData, 100);
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const stats = useMemo(() => {
@@ -59,9 +80,10 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>WK 2026 Panini Collection Tracker ⚽</Text>
+      <Text style={styles.title}>
+        WK 2026 Panini Collection Tracker ⚽
+      </Text>
 
-      {/* ✅ MAIN PROGRESS */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Totaal</Text>
 
@@ -83,9 +105,7 @@ export default function Home() {
         </Text>
       </View>
 
-      {/* ✅ BREAKDOWN */}
       <View style={styles.row}>
-        {/* Teams */}
         <View style={styles.smallCard}>
           <Text style={styles.cardTitle}>Teams</Text>
 
@@ -110,7 +130,6 @@ export default function Home() {
           </Text>
         </View>
 
-        {/* Specials */}
         <View style={styles.smallCard}>
           <Text style={styles.cardTitle}>FWC</Text>
 
