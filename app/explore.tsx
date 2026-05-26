@@ -36,7 +36,7 @@ export default function Explore() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ===== GROEPEN (A–L) =====
+  // ===== GROEPEN =====
   const groups: Record<string, string[]> = {
     A: ["Mexico", "South Africa", "South Korea", "Czechia"],
     B: ["Canada", "Bosnia", "Qatar", "Switzerland"],
@@ -55,34 +55,57 @@ export default function Explore() {
   const tabs = ["ALL", "FWC", ...Object.keys(groups)];
   const currentTeams = groups[activeTab] ?? [];
 
-  // ===== LOAD uit Supabase via storage.ts =====
+  // ✅ SAFE LOAD (fix voor startup crash)
   useEffect(() => {
-    (async () => {
-      const ownedIds = await loadOwnedIds();
+    let mounted = true;
 
-      const counts: Record<string, number> = {};
-      ownedIds.forEach((id) => {
-        counts[id] = (counts[id] || 0) + 1;
-      });
+    const loadData = async () => {
+      try {
+        const ownedIds = await loadOwnedIds();
 
-      setData(
-        INITIAL_DATA.map((s) => {
-          const count = counts[s.id] || 0;
-          return { ...s, count, owned: count > 0 };
-        })
-      );
+        if (!mounted) return;
 
-      setHydrated(true);
-    })();
+        const counts: Record<string, number> = {};
+        ownedIds.forEach((id) => {
+          counts[id] = (counts[id] || 0) + 1;
+        });
+
+        setData(
+          INITIAL_DATA.map((s) => {
+            const count = counts[s.id] || 0;
+            return { ...s, count, owned: count > 0 };
+          })
+        );
+
+        setHydrated(true);
+      } catch (e) {
+        console.error("Explore load crash prevented:", e);
+
+        if (mounted) {
+          setData(INITIAL_DATA);
+          setHydrated(true);
+        }
+      }
+    };
+
+    // ✅ delay voorkomt race condition bij app start
+    setTimeout(loadData, 100);
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // ===== SAVE naar Supabase (debounced) =====
+  // ✅ SAVE (debounced en veilig)
   useEffect(() => {
-  if (!hydrated) return;
+    if (!hydrated) return;
 
     const ownedIds: string[] = [];
+
     data.forEach((s) => {
-      for (let i = 0; i < (s.count || 0); i++) ownedIds.push(s.id);
+      for (let i = 0; i < (s.count || 0); i++) {
+        ownedIds.push(s.id);
+      }
     });
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -101,14 +124,6 @@ export default function Explore() {
         return { ...s, count: newCount, owned: newCount > 0 };
       })
     );
-  };
-
-  // ===== STATS =====
-  const getStats = (items: typeof data) => {
-    const total = items.length;
-    const owned = items.filter((s) => (s.count || 0) > 0).length;
-    const percentage = total === 0 ? 0 : owned / total;
-    return { total, owned, percentage };
   };
 
   // ===== FILTER =====
@@ -133,13 +148,8 @@ export default function Explore() {
     );
   }, [data, query, activeTab, activeTeam]);
 
-  // ===== SEARCH regels =====
-  // Web: altijd zichtbaar
-  // Mobile portrait: toggle
-  // Mobile landscape: uit
   const showSearch = isWeb || (isMobilePortrait && searchOpen);
 
-  // reset search als je naar landscape gaat
   useEffect(() => {
     if (isMobileLandscape) {
       setSearchOpen(false);
@@ -147,9 +157,9 @@ export default function Explore() {
     }
   }, [isMobileLandscape]);
 
-  // swipe down/up op mobile portrait om search open/dicht te zetten
   const panResponder = useMemo(() => {
     if (!isMobilePortrait) return undefined;
+
     return PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dy) > 18 && Math.abs(g.dx) < 14,
@@ -160,146 +170,29 @@ export default function Explore() {
     });
   }, [isMobilePortrait]);
 
-  const tabBarHeight = isWeb ? 65 : isMobilePortrait ? 52 : 56;
-  const teamBarHeight = isWeb ? 85 : isMobilePortrait ? 62 : 72;
-
   const columns = isMobilePortrait ? 1 : 2;
 
   return (
     <View style={styles.container}>
-      {/* HEADER */}
       <View style={styles.header} {...(panResponder?.panHandlers ?? {})}>
-        {!isMobilePortrait && (
-          <Text style={styles.title}>Verzameling ⚽</Text>
-        )}
+        <Text style={styles.title}>Verzameling ⚽</Text>
 
         {isMobilePortrait && (
           <Pressable
-            onPress={() => {
-              const next = !searchOpen;
-              setSearchOpen(next);
-              if (!next) setQuery("");
-            }}
+            onPress={() => setSearchOpen((prev) => !prev)}
             style={styles.searchToggle}
-            accessibilityRole="button"
-            accessibilityLabel={searchOpen ? "Sluit zoeken" : "Open zoeken"}
           >
-            <FontAwesome
-              name={searchOpen ? "times" : "search"}
-              size={18}
-              color="#111827"
-            />
+            <FontAwesome name="search" size={18} />
           </Pressable>
         )}
       </View>
 
-      {/* SEARCH */}
       {showSearch && (
         <View style={styles.searchWrap}>
           <SearchBar value={query} onChange={setQuery} />
         </View>
       )}
 
-      {/* GROUP TABS */}
-      <View style={[styles.tabBar, { height: tabBarHeight }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.row}>
-            {tabs.map((tab) => {
-              let tabData = data;
-
-              if (tab === "FWC") {
-                tabData = data.filter((s) => s.team === "Specials");
-              } else if (groups[tab]) {
-                tabData = data.filter((s) => groups[tab].includes(s.team));
-              }
-
-              const stats = getStats(tabData);
-
-              return (
-                <Pressable
-                  key={tab}
-                  onPress={() => {
-                    setActiveTab(tab);
-                    setActiveTeam(null);
-                  }}
-                  style={[styles.tab, activeTab === tab && styles.tabActive]}
-                >
-                  <Text style={styles.tabText} numberOfLines={1}>
-                    {tab === "ALL"
-                      ? "Alles"
-                      : tab === "FWC"
-                      ? "FWC"
-                      : `Groep ${tab}`}
-                  </Text>
-
-                  {/* cijfers op web + landscape, niet op mobile portrait */}
-                  {(isWeb || isMobileLandscape) && (
-                    <Text style={styles.progressText}>
-                      {stats.owned} / {stats.total}
-                    </Text>
-                  )}
-
-                  {/* balk altijd zichtbaar */}
-                  <View style={styles.progressBar}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        { width: `${stats.percentage * 100}%` },
-                      ]}
-                    />
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </View>
-
-      {/* TEAM TABS */}
-      {groups[activeTab] && (
-        <View style={[styles.teamBar, { height: teamBarHeight }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.row}>
-              {currentTeams.map((team) => {
-                const teamData = data.filter((s) => s.team === team);
-                const stats = getStats(teamData);
-
-                return (
-                  <Pressable
-                    key={team}
-                    onPress={() =>
-                      setActiveTeam(activeTeam === team ? null : team)
-                    }
-                    style={[styles.teamTab, activeTeam === team && styles.teamTabActive]}
-                  >
-                    <FlagRect team={team} />
-                    <Text style={styles.teamText} numberOfLines={2}>
-                      {team}
-                    </Text>
-
-                    {(isWeb || isMobileLandscape) && (
-                      <Text style={styles.progressTextSmall}>
-                        {stats.owned} / {stats.total}
-                      </Text>
-                    )}
-
-                    <View style={styles.progressBarSmall}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { width: `${stats.percentage * 100}%` },
-                        ]}
-                      />
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </View>
-      )}
-
-      {/* LIST */}
       <StickerList
         data={filtered}
         onChangeCount={changeCount}
@@ -317,80 +210,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
   },
 
   title: { fontSize: 22, fontWeight: "bold" },
 
   searchToggle: {
     padding: 8,
-    borderRadius: 10,
     backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-
-  searchWrap: { marginBottom: 10 },
-
-  row: { flexDirection: "row" },
-
-  tabBar: { height: 65 },
-  teamBar: { height: 85 },
-
-  tab: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: "#ddd",
     borderRadius: 8,
-    marginRight: 6,
-    width: 100,
-    alignItems: "center",
   },
 
-  tabActive: { backgroundColor: "#2563EB" },
-
-  tabText: { fontSize: 12, fontWeight: "bold", color: "#111827" },
-
-  progressText: { fontSize: 10, marginTop: 2, marginBottom: 2, color: "#111827" },
-
-  progressBar: {
-    height: 4,
-    backgroundColor: "#ccc",
-    borderRadius: 2,
-    overflow: "hidden",
-    width: "100%",
-  },
-
-  progressFill: { height: "100%", backgroundColor: "#22C55E" },
-
-  teamTab: {
-    paddingTop: 10,
-    paddingBottom: 10,
-    paddingHorizontal: 6,
-    backgroundColor: "#eee",
-    borderRadius: 8,
-    marginRight: 6,
-    width: 110,
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-
-  teamTabActive: { backgroundColor: "#10B981" },
-
-  teamText: {
-    textAlign: "center",
-    fontSize: 13,
-    fontWeight: "600",
-    minHeight: 34,
-  },
-
-  progressTextSmall: { fontSize: 10, marginTop: 2, marginBottom: 2, color: "#111827" },
-
-  progressBarSmall: {
-    height: 4,
-    backgroundColor: "#ccc",
-    borderRadius: 2,
-    overflow: "hidden",
-    width: "100%",
-  },
+  searchWrap: { marginVertical: 10 },
 });
